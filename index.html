@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Loading...</title>
+    <title>Loading Arcade</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
@@ -14,6 +14,8 @@
             touch-action: none;
             background-color: #111;
             color: white;
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         canvas {
@@ -42,7 +44,25 @@
             );
             background-size: 100% 4px;
             pointer-events: none;
-            z-index: 50;
+            z-index: 40;
+        }
+
+        .d-pad-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            user-select: none;
+            touch-action: manipulation;
+        }
+        .d-pad-btn:active {
+            background: rgba(255, 255, 255, 0.4);
         }
 
         /* Status Indicator Pulse */
@@ -58,583 +78,760 @@
             100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0); }
         }
 
-        .status-online {
-            animation: pulse-green 2s infinite;
-        }
-        .status-checking {
-            animation: pulse-red 2s infinite;
-        }
+        .status-online { animation: pulse-green 2s infinite; }
+        .status-checking { animation: pulse-red 2s infinite; }
 
         #ui-layer {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none;
+            z-index: 50;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            padding: 20px;
-            z-index: 10;
         }
+        
+        .interactive { pointer-events: auto; }
 
-        .interactive {
-            pointer-events: auto;
+        /* Game specific grids */
+        .grid-bg {
+            background-size: 40px 40px;
+            background-image:
+                linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px);
         }
     </style>
 </head>
 <body>
 
-    <!-- Visual Overlay Effects -->
     <div class="scanlines"></div>
 
-    <!-- Main UI Layer -->
-    <div id="ui-layer">
-        <!-- Header: Status Bar -->
+    <!-- UI LAYER -->
+    <div id="ui-layer" class="p-4">
+        
+        <!-- HEADER -->
         <div class="flex justify-between items-start w-full">
-            <!-- Score (Moved to Left to avoid conflict with Status Bar) -->
+            <!-- Score -->
             <div class="text-left">
-                <div class="text-4xl font-bold retro-text" id="score-display">0</div>
+                <div class="text-4xl font-bold retro-text text-white" id="score-display">0</div>
                 <div class="text-xs text-gray-400 mt-1">HIGH: <span id="highscore-display">0</span></div>
             </div>
 
-            <!-- Status Panel (Moved to Right) -->
-            <div class="bg-gray-900 border-2 border-white p-3 rounded shadow-lg interactive bg-opacity-90 max-w-[200px] md:max-w-md">
-                <div class="text-xs text-gray-400 mb-1 uppercase tracking-widest text-right">Target Status</div>
-                <div id="status-display" class="flex items-center gap-2 justify-end">
-                    <span id="status-text" class="text-xs md:text-sm leading-tight text-right">Waking up server...</span>
-                    <div id="status-dot" class="w-3 h-3 rounded-full bg-red-500 status-checking shrink-0"></div>
+            <!-- Status Panel (Fixed Width & Layout) -->
+            <div class="bg-gray-900 border-2 border-white p-2 rounded shadow-lg interactive bg-opacity-90 w-48 flex flex-col">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-[10px] text-gray-400 uppercase tracking-widest">SERVER</span>
+                    <div id="status-dot" class="w-2 h-2 rounded-full bg-red-500 status-checking"></div>
                 </div>
-                <button id="go-btn" class="hidden mt-3 w-full bg-green-600 hover:bg-green-500 text-white py-2 text-xs rounded border-b-4 border-green-800 active:border-0 active:translate-y-1 transition-all">
-                    ENTER APP ->
+                <div id="status-text" class="text-[10px] leading-tight text-right font-mono text-gray-300 mb-1">Checking...</div>
+                
+                <button id="go-btn" class="hidden w-full bg-green-600 hover:bg-green-500 text-white py-2 text-[10px] rounded border-b-2 border-green-800 active:border-0 transition-all font-bold">
+                    ENTER SITE >>
                 </button>
             </div>
         </div>
 
-        <!-- Center: Game Messages / Start Screen -->
-        <div id="center-message" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center w-full px-4 interactive">
+        <!-- MENUS / OVERLAYS -->
+        <div id="center-overlay" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center w-full px-4 interactive">
             
-            <!-- Config Panel (Only shows if no URL set) -->
-            <div id="config-panel" class="hidden bg-gray-800 border-4 border-white p-6 rounded-lg shadow-2xl max-w-md mx-auto mb-6">
-                <h2 class="text-yellow-400 text-lg mb-4 retro-text">SYSTEM CONFIG</h2>
-                <p class="text-xs text-gray-300 mb-4 leading-relaxed">
-                    Enter the URL of your Render/Heroku app. We will ping it while you play.
-                </p>
-                <input type="text" id="target-url-input" placeholder="https://my-app.onrender.com" class="w-full bg-gray-900 border border-gray-600 text-white p-3 text-xs mb-4 font-mono focus:outline-none focus:border-yellow-400 rounded">
-                <button id="save-config-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 text-sm rounded border-b-4 border-blue-800 active:border-b-0 active:mt-1">
-                    START SYSTEM
-                </button>
-            </div>
-
-            <!-- Game Messages -->
-            <div id="game-start-msg">
-                <h1 class="text-4xl md:text-6xl font-bold text-yellow-400 mb-4 retro-text drop-shadow-lg">FLAPPY<br>WAIT</h1>
-                <p class="text-sm md:text-base blink text-white bg-black bg-opacity-50 inline-block px-4 py-2 rounded">PRESS SPACE or TAP</p>
-            </div>
-
-            <div id="game-over-msg" class="hidden">
-                <h1 class="text-4xl font-bold text-red-500 mb-4 retro-text">GAME OVER</h1>
-                <div class="bg-gray-900 border-2 border-white p-4 inline-block rounded mb-4">
-                    <div class="text-xs text-gray-400">SCORE</div>
-                    <div class="text-2xl text-white mb-2" id="final-score">0</div>
-                    <div class="text-xs text-gray-400">BEST</div>
-                    <div class="text-xl text-yellow-400" id="final-best">0</div>
+            <!-- MAIN MENU -->
+            <div id="main-menu" class="bg-gray-900 border-4 border-white p-6 rounded-lg shadow-2xl max-w-md mx-auto">
+                <h1 class="text-2xl text-yellow-400 mb-6 retro-text">WAITING<br>ARCADE</h1>
+                <div class="space-y-3">
+                    <button onclick="GameManager.start('flappy')" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded border-b-4 border-blue-800 active:border-0 text-sm retro-text group">
+                        FLAPPY BIRD
+                    </button>
+                    <button onclick="GameManager.start('snake')" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded border-b-4 border-green-800 active:border-0 text-sm retro-text">
+                        SNAKE
+                    </button>
+                    <button onclick="GameManager.start('tetris')" class="w-full bg-red-600 hover:bg-red-500 text-white py-4 rounded border-b-4 border-red-800 active:border-0 text-sm retro-text">
+                        TETRIS
+                    </button>
                 </div>
-                <br>
-                <button id="restart-btn" class="bg-white text-black px-6 py-3 rounded border-b-4 border-gray-400 hover:bg-gray-200 active:border-0 active:mt-1 font-bold">
-                    RETRY
-                </button>
+            </div>
+
+            <!-- GAME OVER -->
+            <div id="game-over-msg" class="hidden bg-black bg-opacity-90 p-6 rounded-xl border-2 border-red-500">
+                <h1 class="text-3xl font-bold text-red-500 mb-4 retro-text">GAME OVER</h1>
+                <div class="text-sm text-gray-400 mb-2">SCORE: <span id="final-score" class="text-white text-xl">0</span></div>
+                <div class="flex gap-4 justify-center mt-6">
+                    <button id="menu-btn" class="bg-gray-600 text-white px-4 py-3 rounded border-b-4 border-gray-800 active:border-0 text-xs">MENU</button>
+                    <button id="retry-btn" class="bg-white text-black px-6 py-3 rounded border-b-4 border-gray-400 active:border-0 text-xs font-bold">RETRY</button>
+                </div>
             </div>
         </div>
 
-        <!-- Footer -->
-        <div class="text-center text-[10px] text-gray-600 pb-2">
-            v1.0 // WAITING ROOM
+        <!-- VIRTUAL CONTROLS (Only for Snake/Tetris) -->
+        <div id="mobile-controls" class="hidden interactive w-full flex-col items-center pb-4">
+            <div class="flex gap-2 mb-2">
+                <button class="d-pad-btn" id="btn-up">▲</button>
+            </div>
+            <div class="flex gap-8">
+                <button class="d-pad-btn" id="btn-left">◀</button>
+                <button class="d-pad-btn" id="btn-down">▼</button>
+                <button class="d-pad-btn" id="btn-right">▶</button>
+            </div>
         </div>
     </div>
 
     <canvas id="gameCanvas"></canvas>
 
     <script>
-        /**
-         * CONFIGURATION
-         * You can hardcode your URL here to skip the input screen.
-         * Example: const HARDCODED_URL = "https://my-cool-app.onrender.com";
-         */
-        const HARDCODED_URL = "https://vtopc.onrender.com/login"; 
-
-        // --- Game Engine Setup ---
+        // CONFIG
+        const TARGET_URL = "https://vtopc.onrender.com/login";
+        
+        // UTILS
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
-        // Responsive Canvas
-        function resizeCanvas() {
+        function resize() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
         }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
+        window.addEventListener('resize', resize);
+        resize();
 
-        // Game State
-        let frames = 0;
-        let score = 0;
-        let highScore = localStorage.getItem('flappy_highscore') || 0;
-        let gameSpeed = 2.5; // Initial speed
-        let gameState = 'START'; // START, PLAYING, GAMEOVER
-        let targetUrl = HARDCODED_URL;
-        let isTargetReady = false;
-        let ignoreInputTimestamp = 0; // Debounce for inputs
-
-        // UI Elements
-        const uiScore = document.getElementById('score-display');
-        const uiHighScore = document.getElementById('highscore-display');
-        const msgStart = document.getElementById('game-start-msg');
-        const msgOver = document.getElementById('game-over-msg');
-        const finalScore = document.getElementById('final-score');
-        const finalBest = document.getElementById('final-best');
-        const restartBtn = document.getElementById('restart-btn');
-        const configPanel = document.getElementById('config-panel');
-        const urlInput = document.getElementById('target-url-input');
-        const saveConfigBtn = document.getElementById('save-config-btn');
-
-        // Sound Synthesis (No external assets needed)
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        const audioCtx = new AudioContext();
-
-        function playSound(type) {
+        // AUDIO
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playTone(freq, type, duration) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             const osc = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            osc.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
-            if (type === 'jump') {
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(300, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(500, audioCtx.currentTime + 0.1);
-                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.1);
-            } else if (type === 'score') {
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-                osc.frequency.setValueAtTime(800, audioCtx.currentTime + 0.1);
-                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.2);
-            } else if (type === 'hit') {
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.2);
-                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.2);
-            }
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
         }
 
-        // --- Physics Entities ---
+        // --- GAME MANAGER ---
+        const GameManager = {
+            mode: 'MENU', // MENU, FLAPPY, SNAKE, TETRIS, GAMEOVER
+            score: 0,
+            highScores: JSON.parse(localStorage.getItem('arcade_scores')) || { flappy: 0, snake: 0, tetris: 0 },
+            timestamp: 0,
+            inputBlock: 0, // Debounce timestamp
 
-        const bird = {
-            x: 50,
-            y: 150,
-            w: 30,
-            h: 30,
-            color: '#FACC15', // Tailwind Yellow-400
-            velocity: 0,
-            gravity: 0.25,
-            jumpStrength: 5.5,
-            rotation: 0,
-            draw: function() {
-                ctx.save();
-                ctx.translate(this.x + this.w/2, this.y + this.h/2);
-                // Rotation based on velocity
-                let rot = Math.min(Math.PI / 4, Math.max(-Math.PI / 4, (this.velocity * 0.1)));
-                ctx.rotate(rot);
+            start: function(gameMode) {
+                if (Date.now() < this.inputBlock) return;
                 
-                // Body
-                ctx.fillStyle = this.color;
-                ctx.fillRect(-this.w/2, -this.h/2, this.w, this.h);
+                this.mode = gameMode.toUpperCase();
+                this.score = 0;
                 
-                // Eye
-                ctx.fillStyle = 'white';
-                ctx.fillRect(this.w/4, -this.h/2 + 4, 10, 10);
-                ctx.fillStyle = 'black';
-                ctx.fillRect(this.w/4 + 4, -this.h/2 + 6, 4, 4);
+                // UI Updates
+                document.getElementById('main-menu').classList.add('hidden');
+                document.getElementById('game-over-msg').classList.add('hidden');
+                document.getElementById('score-display').innerText = '0';
+                document.getElementById('highscore-display').innerText = this.highScores[gameMode];
                 
-                // Beak
-                ctx.fillStyle = '#F97316'; // Orange
-                ctx.fillRect(this.w/2, 0, 8, 6);
+                // Controls Visibility
+                const controls = document.getElementById('mobile-controls');
+                if (gameMode === 'flappy') controls.classList.add('hidden');
+                else controls.classList.remove('hidden');
+                controls.style.display = (gameMode === 'flappy') ? 'none' : 'flex';
+
+                // Init specific game
+                if (gameMode === 'flappy') FlappyGame.init();
+                if (gameMode === 'snake') SnakeGame.init();
+                if (gameMode === 'tetris') TetrisGame.init();
+
+                // Add grid background for Tetris/Snake
+                if (gameMode !== 'flappy') document.body.classList.add('grid-bg');
+                else document.body.classList.remove('grid-bg');
+            },
+
+            over: function() {
+                this.inputBlock = Date.now() + 1000; // 1 second debounce
+                this.mode = 'GAMEOVER';
                 
-                // Wing
-                ctx.fillStyle = '#EAB308'; // Darker yellow
-                ctx.fillRect(-this.w/4, 2, 16, 10);
+                // Save Highscore
+                let currentModeKey = 'flappy';
+                if (FlappyGame.active) currentModeKey = 'flappy';
+                else if (SnakeGame.active) currentModeKey = 'snake';
+                else if (TetrisGame.active) currentModeKey = 'tetris';
 
-                ctx.restore();
-            },
-            update: function() {
-                this.velocity += this.gravity;
-                this.y += this.velocity;
-
-                // Floor collision
-                if (this.y + this.h >= canvas.height - 20) { // -20 for ground offset
-                    this.y = canvas.height - 20 - this.h;
-                    gameOver();
+                if (this.score > this.highScores[currentModeKey]) {
+                    this.highScores[currentModeKey] = this.score;
+                    localStorage.setItem('arcade_scores', JSON.stringify(this.highScores));
                 }
+
+                document.getElementById('final-score').innerText = this.score;
+                document.getElementById('game-over-msg').classList.remove('hidden');
+                document.getElementById('mobile-controls').style.display = 'none';
+                playTone(150, 'sawtooth', 0.5);
+            },
+
+            toMenu: function() {
+                if (Date.now() < this.inputBlock) return;
+                this.mode = 'MENU';
+                document.getElementById('game-over-msg').classList.add('hidden');
+                document.getElementById('main-menu').classList.remove('hidden');
+                document.getElementById('mobile-controls').style.display = 'none';
+                document.body.classList.remove('grid-bg');
                 
-                // Ceiling collision
-                if (this.y < 0) {
-                    this.y = 0;
-                    this.velocity = 0;
-                }
+                // Stop all games
+                FlappyGame.active = false;
+                SnakeGame.active = false;
+                TetrisGame.active = false;
             },
-            jump: function() {
-                this.velocity = -this.jumpStrength;
-                playSound('jump');
-            }
-        };
 
-        const pipes = {
-            items: [],
-            width: 60,
-            gap: 170,
-            dx: 2.5, // Must match gameSpeed
-            timer: 0,
-            draw: function() {
-                ctx.fillStyle = '#22c55e'; // Green-500
-                ctx.strokeStyle = '#14532d'; // Green-900
-                ctx.lineWidth = 3;
-
-                for (let i = 0; i < this.items.length; i++) {
-                    let p = this.items[i];
-                    
-                    // Top Pipe
-                    ctx.fillRect(p.x, 0, this.width, p.top);
-                    ctx.strokeRect(p.x, 0, this.width, p.top);
-                    // Top Cap
-                    ctx.fillRect(p.x - 4, p.top - 20, this.width + 8, 20);
-                    ctx.strokeRect(p.x - 4, p.top - 20, this.width + 8, 20);
-
-                    // Bottom Pipe
-                    ctx.fillRect(p.x, canvas.height - p.bottom, this.width, p.bottom);
-                    ctx.strokeRect(p.x, canvas.height - p.bottom, this.width, p.bottom);
-                    // Bottom Cap
-                    ctx.fillRect(p.x - 4, canvas.height - p.bottom, this.width + 8, 20);
-                    ctx.strokeRect(p.x - 4, canvas.height - p.bottom, this.width + 8, 20);
-                }
+            retry: function() {
+                if (Date.now() < this.inputBlock) return;
+                let prevMode = 'flappy';
+                if (SnakeGame.active) prevMode = 'snake';
+                if (TetrisGame.active) prevMode = 'tetris';
+                this.start(prevMode);
             },
-            update: function() {
-                // Add new pipe
-                if (frames % 150 === 0) { // Roughly every 2.5 seconds
-                    // Randomize gap position
-                    let maxTop = canvas.height - this.gap - 100; // 100 is min bottom pipe height
-                    let topHeight = Math.floor(Math.random() * (maxTop - 50)) + 50; // 50 is min top pipe height
-                    
-                    this.items.push({
-                        x: canvas.width,
-                        top: topHeight,
-                        bottom: canvas.height - this.gap - topHeight,
-                        passed: false
-                    });
-                }
-
-                for (let i = 0; i < this.items.length; i++) {
-                    let p = this.items[i];
-                    p.x -= this.dx;
-
-                    // Collision Detection
-                    // 1. X-axis overlap
-                    if (bird.x + bird.w > p.x && bird.x < p.x + this.width) {
-                        // 2. Y-axis overlap (Top pipe OR Bottom pipe)
-                        if (bird.y < p.top || bird.y + bird.h > canvas.height - p.bottom) {
-                            gameOver();
-                        }
-                    }
-
-                    // Score point
-                    if (p.x + this.width < bird.x && !p.passed) {
-                        score++;
-                        
-                        // --- DIFFICULTY SCALING ---
-                        gameSpeed += 0.08; // Harder: Speed increases faster (was 0.05)
-                        this.dx = gameSpeed;
-
-                        // Harder: Shrink the gap every 5 points, down to a limit
-                        if (score % 5 === 0 && this.gap > 130) {
-                            this.gap -= 8; 
-                        }
-
-                        p.passed = true;
-                        uiScore.innerText = score;
-                        playSound('score');
-                        
-                        // Visual feedback
-                        uiScore.style.transform = "scale(1.5)";
-                        setTimeout(() => uiScore.style.transform = "scale(1)", 100);
-                    }
-
-                    // Remove off-screen pipes
-                    if (p.x + this.width < 0) {
-                        this.items.shift();
-                        i--;
-                    }
-                }
-            },
-            reset: function() {
-                this.items = [];
-                this.dx = 2.5;
-                this.gap = 170; // Reset gap to initial easy size
-            }
-        };
-
-        // --- Background Decoration ---
-        const clouds = {
-            items: [],
-            draw: function() {
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-                for(let c of this.items) {
-                    ctx.fillRect(c.x, c.y, c.w, c.h);
-                }
-            },
-            update: function() {
-                if(Math.random() < 0.01) {
-                    this.items.push({
-                        x: canvas.width,
-                        y: Math.random() * (canvas.height/2),
-                        w: 50 + Math.random() * 100,
-                        h: 20 + Math.random() * 30,
-                        speed: 0.5 + Math.random() * 1
-                    });
-                }
-                for(let i=0; i<this.items.length; i++) {
-                    this.items[i].x -= this.items[i].speed;
-                    if(this.items[i].x + this.items[i].w < 0) {
-                        this.items.shift();
-                        i--;
-                    }
-                }
-            }
-        }
-
-        // --- Game Loop ---
-
-        function loop() {
-            // Background
-            ctx.fillStyle = '#1a1a1a'; // Dark Gray
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // Ground
-            ctx.fillStyle = '#374151';
-            ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
-
-            clouds.update();
-            clouds.draw();
-
-            if (gameState === 'PLAYING') {
-                bird.update();
-                pipes.update();
-                frames++;
+            addScore: function(points) {
+                this.score += points;
+                document.getElementById('score-display').innerText = this.score;
             }
+        };
 
-            pipes.draw();
-            bird.draw();
+        // --- FLAPPY BIRD ENGINE ---
+        const FlappyGame = {
+            active: false,
+            bird: { y: 0, v: 0 },
+            pipes: [],
+            frame: 0,
+            lastJumpTime: 0, // Cooldown timer
+            
+            init: function() {
+                this.active = true;
+                SnakeGame.active = false; 
+                TetrisGame.active = false;
+                this.bird = { y: canvas.height/2, v: 0 };
+                this.pipes = [];
+                this.frame = 0;
+                this.lastJumpTime = 0;
+            },
 
-            // Ground stripe animation
-            ctx.fillStyle = '#4b5563';
-            let groundOffset = (frames * gameSpeed) % 20;
-            for(let i=0; i<canvas.width; i+=20) {
-                ctx.fillRect(i - groundOffset, canvas.height-20, 10, 20);
+            update: function() {
+                if (!this.active) return;
+                this.frame++;
+
+                // Physics
+                this.bird.v += 0.25;
+                this.bird.y += this.bird.v;
+
+                // Pipes
+                if (this.frame % 120 === 0) {
+                    this.pipes.push({ x: canvas.width, gapY: Math.random() * (canvas.height - 300) + 50, passed: false });
+                }
+
+                for (let i = 0; i < this.pipes.length; i++) {
+                    let p = this.pipes[i];
+                    p.x -= 3;
+
+                    // Collision
+                    if (
+                        (p.x < 80 && p.x + 60 > 50) && // X overlap (bird x is 50, w 30)
+                        (this.bird.y < p.gapY || this.bird.y + 30 > p.gapY + 180) // Y overlap (gap is 180)
+                    ) {
+                        GameManager.over();
+                    }
+
+                    if (p.x + 60 < 50 && !p.passed) {
+                        p.passed = true;
+                        GameManager.addScore(1);
+                        playTone(600, 'square', 0.1);
+                    }
+                }
+
+                // Bounds
+                if (this.bird.y > canvas.height || this.bird.y < -50) GameManager.over();
+
+                // Cleanup
+                this.pipes = this.pipes.filter(p => p.x > -100);
+            },
+
+            draw: function() {
+                // Bird
+                ctx.fillStyle = '#fbbf24';
+                ctx.fillRect(50, this.bird.y, 30, 30);
+                
+                // Pipes
+                ctx.fillStyle = '#22c55e';
+                this.pipes.forEach(p => {
+                    ctx.fillRect(p.x, 0, 60, p.gapY);
+                    ctx.fillRect(p.x, p.gapY + 180, 60, canvas.height);
+                });
+            },
+
+            jump: function() {
+                // Debounce / Delay logic
+                const now = Date.now();
+                if (now - this.lastJumpTime < 200) return; // 200ms cooldown
+                
+                this.lastJumpTime = now;
+                this.bird.v = -6;
+                playTone(300, 'sine', 0.1);
+            }
+        };
+
+        // --- SNAKE ENGINE ---
+        const SnakeGame = {
+            active: false,
+            grid: 20,
+            snake: [],
+            food: {},
+            dir: { x: 0, y: 0 },
+            nextDir: { x: 0, y: 0 },
+            speed: 10,
+            frame: 0,
+
+            init: function() {
+                this.active = true;
+                FlappyGame.active = false;
+                TetrisGame.active = false;
+                this.snake = [{x: 10, y: 10}, {x: 9, y: 10}, {x: 8, y: 10}];
+                this.dir = { x: 1, y: 0 };
+                this.nextDir = { x: 1, y: 0 };
+                this.spawnFood();
+            },
+
+            spawnFood: function() {
+                const cols = Math.floor(canvas.width / this.grid);
+                const rows = Math.floor(canvas.height / this.grid);
+                this.food = {
+                    x: Math.floor(Math.random() * cols),
+                    y: Math.floor(Math.random() * rows)
+                };
+            },
+
+            update: function() {
+                if (!this.active) return;
+                this.frame++;
+                if (this.frame % 6 !== 0) return;
+
+                this.dir = {...this.nextDir};
+
+                const head = { x: this.snake[0].x + this.dir.x, y: this.snake[0].y + this.dir.y };
+
+                const cols = Math.floor(canvas.width / this.grid);
+                const rows = Math.floor(canvas.height / this.grid);
+                
+                if (head.x < 0 || head.x >= cols || head.y < 0 || head.y >= rows) {
+                    GameManager.over();
+                    return;
+                }
+
+                for (let part of this.snake) {
+                    if (head.x === part.x && head.y === part.y) {
+                        GameManager.over();
+                        return;
+                    }
+                }
+
+                this.snake.unshift(head);
+
+                if (head.x === this.food.x && head.y === this.food.y) {
+                    GameManager.addScore(10);
+                    playTone(600, 'square', 0.1);
+                    this.spawnFood();
+                } else {
+                    this.snake.pop();
+                }
+            },
+
+            draw: function() {
+                ctx.fillStyle = '#22c55e';
+                this.snake.forEach(p => {
+                    ctx.fillRect(p.x * this.grid, p.y * this.grid, this.grid - 1, this.grid - 1);
+                });
+
+                ctx.fillStyle = '#ef4444';
+                ctx.fillRect(this.food.x * this.grid, this.food.y * this.grid, this.grid - 1, this.grid - 1);
+            },
+
+            input: function(x, y) {
+                if (x !== 0 && this.dir.x !== 0) return;
+                if (y !== 0 && this.dir.y !== 0) return;
+                this.nextDir = {x, y};
+            }
+        };
+
+        // --- TETRIS ENGINE ---
+        const TetrisGame = {
+            active: false,
+            grid: 25,
+            cols: 10,
+            rows: 20,
+            board: [],
+            piece: null,
+            nextPiece: null, // Store next piece
+            offset: {x:0, y:0},
+            dropCounter: 0,
+            dropInterval: 1000,
+            
+            // UPDATED: Shapes are now square matrices (NxN) for correct rotation
+            shapes: [
+                [
+                    [0, 0, 0, 0],
+                    [1, 1, 1, 1],
+                    [0, 0, 0, 0],
+                    [0, 0, 0, 0]
+                ], // I (4x4)
+                [
+                    [1, 1],
+                    [1, 1]
+                ], // O (2x2)
+                [
+                    [0, 1, 0],
+                    [1, 1, 1],
+                    [0, 0, 0]
+                ], // T (3x3)
+                [
+                    [1, 0, 0],
+                    [1, 1, 1],
+                    [0, 0, 0]
+                ], // L (3x3)
+                [
+                    [0, 0, 1],
+                    [1, 1, 1],
+                    [0, 0, 0]
+                ], // J (3x3)
+                [
+                    [0, 1, 1],
+                    [1, 1, 0],
+                    [0, 0, 0]
+                ], // S (3x3)
+                [
+                    [1, 1, 0],
+                    [0, 1, 1],
+                    [0, 0, 0]
+                ]  // Z (3x3)
+            ],
+            colors: ['#00f0f0', '#f0f000', '#a000f0', '#f0a000', '#0000f0', '#00f000', '#f00000'],
+
+            createPiece: function() {
+                const typeId = Math.floor(Math.random() * this.shapes.length);
+                const shape = this.shapes[typeId];
+                
+                // FIX: Create a DEEP COPY of the matrix. 
+                // Previously, we passed the reference, so rotating changed the original shape array.
+                const matrix = shape.map(row => [...row]);
+                
+                return {
+                    matrix: matrix,
+                    // Center the piece based on its specific width
+                    pos: {x: (this.cols / 2 | 0) - Math.ceil(matrix[0].length / 2), y: 0},
+                    color: this.colors[typeId]
+                };
+            },
+
+            init: function() {
+                this.active = true;
+                FlappyGame.active = false;
+                SnakeGame.active = false;
+                
+                this.offset.x = (canvas.width - (this.cols * this.grid)) / 2;
+                this.offset.y = (canvas.height - (this.rows * this.grid)) / 2;
+                
+                this.board = Array(this.rows).fill().map(() => Array(this.cols).fill(0));
+                this.nextPiece = this.createPiece(); // Init next
+                this.resetPiece();
+                this.dropCounter = 0;
+            },
+
+            resetPiece: function() {
+                this.piece = this.nextPiece; // Use next
+                this.nextPiece = this.createPiece(); // Generate new next
+                this.piece.pos = {x: (this.cols / 2 | 0) - 1, y: 0}; // Reset pos
+                
+                if (this.collide(this.board, this.piece)) {
+                    GameManager.over();
+                }
+            },
+
+            collide: function(board, piece) {
+                const m = piece.matrix;
+                const o = piece.pos;
+                for (let y = 0; y < m.length; ++y) {
+                    for (let x = 0; x < m[y].length; ++x) {
+                        if (m[y][x] !== 0 &&
+                           (board[y + o.y] && board[y + o.y][x + o.x]) !== 0) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            },
+
+            merge: function(board, piece) {
+                piece.matrix.forEach((row, y) => {
+                    row.forEach((value, x) => {
+                        if (value !== 0) {
+                            board[y + piece.pos.y][x + piece.pos.x] = piece.color;
+                        }
+                    });
+                });
+            },
+
+            rotate: function(matrix) {
+                for (let y = 0; y < matrix.length; ++y) {
+                    for (let x = 0; x < y; ++x) {
+                        [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+                    }
+                }
+                matrix.forEach(row => row.reverse());
+            },
+
+            playerRotate: function(dir) {
+                const pos = this.piece.pos.x;
+                let offset = 1;
+                this.rotate(this.piece.matrix);
+                while (this.collide(this.board, this.piece)) {
+                    this.piece.pos.x += offset;
+                    offset = -(offset + (offset > 0 ? 1 : -1));
+                    if (offset > this.piece.matrix[0].length) {
+                        this.rotate(this.piece.matrix);
+                        this.piece.pos.x = pos;
+                        return;
+                    }
+                }
+            },
+
+            arenaSweep: function() {
+                outer: for (let y = this.board.length - 1; y > 0; --y) {
+                    for (let x = 0; x < this.board[y].length; ++x) {
+                        if (this.board[y][x] === 0) continue outer;
+                    }
+                    const row = this.board.splice(y, 1)[0].fill(0);
+                    this.board.unshift(row);
+                    ++y;
+                    GameManager.addScore(100);
+                    playTone(400, 'sine', 0.2);
+                }
+            },
+
+            update: function() {
+                if (!this.active) return;
+                this.dropCounter += 16;
+                if (this.dropCounter > this.dropInterval) {
+                    this.drop();
+                }
+            },
+
+            draw: function() {
+                // Draw Board Border
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(this.offset.x - 2, this.offset.y - 2, (this.cols * this.grid) + 4, (this.rows * this.grid) + 4);
+                
+                // Board BG
+                ctx.fillStyle = '#111';
+                ctx.fillRect(this.offset.x, this.offset.y, this.cols * this.grid, this.rows * this.grid);
+
+                // Draw Board Blocks
+                this.board.forEach((row, y) => {
+                    row.forEach((value, x) => {
+                        if (value !== 0) {
+                            ctx.fillStyle = value;
+                            ctx.fillRect(this.offset.x + x * this.grid, this.offset.y + y * this.grid, this.grid-1, this.grid-1);
+                        }
+                    });
+                });
+
+                // Draw Active Piece
+                if (this.piece) {
+                    this.piece.matrix.forEach((row, y) => {
+                        row.forEach((value, x) => {
+                            if (value !== 0) {
+                                ctx.fillStyle = this.piece.color;
+                                ctx.fillRect(this.offset.x + (x + this.piece.pos.x) * this.grid, 
+                                             this.offset.y + (y + this.piece.pos.y) * this.grid, 
+                                             this.grid-1, this.grid-1);
+                            }
+                        });
+                    });
+                }
+
+                // --- DRAW NEXT PIECE PREVIEW ---
+                const previewX = this.offset.x + (this.cols * this.grid) + 20;
+                const previewY = this.offset.y;
+                
+                // Label
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px "Press Start 2P"';
+                ctx.fillText("NEXT", previewX, previewY - 10);
+
+                // Box Border
+                ctx.strokeStyle = '#666';
+                ctx.strokeRect(previewX, previewY, 80, 80);
+                ctx.fillStyle = '#000';
+                ctx.fillRect(previewX, previewY, 80, 80);
+
+                // Draw the piece centered in box
+                if (this.nextPiece) {
+                    const offsetX = previewX + 15;
+                    const offsetY = previewY + 15;
+                    this.nextPiece.matrix.forEach((row, y) => {
+                        row.forEach((value, x) => {
+                            if (value !== 0) {
+                                ctx.fillStyle = this.nextPiece.color;
+                                ctx.fillRect(offsetX + x * 15, offsetY + y * 15, 14, 14);
+                            }
+                        });
+                    });
+                }
+            },
+
+            move: function(dir) {
+                this.piece.pos.x += dir;
+                if (this.collide(this.board, this.piece)) {
+                    this.piece.pos.x -= dir;
+                }
+            },
+            
+            drop: function() {
+                this.piece.pos.y++;
+                if (this.collide(this.board, this.piece)) {
+                    this.piece.pos.y--;
+                    this.merge(this.board, this.piece);
+                    this.resetPiece();
+                    this.arenaSweep();
+                    this.dropCounter = 0;
+                } else {
+                    this.dropCounter = 0;
+                }
+            },
+
+            hardDrop: function() {
+                while (!this.collide(this.board, this.piece)) {
+                    this.piece.pos.y++;
+                }
+                this.piece.pos.y--; // Step back up 1
+                this.merge(this.board, this.piece);
+                this.resetPiece();
+                this.arenaSweep();
+                this.dropCounter = 0;
+                playTone(100, 'square', 0.1);
+            }
+        };
+
+        // --- MAIN LOOP ---
+        function loop() {
+            // Clear
+            ctx.fillStyle = '#0f0f0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Global Board Border (Retro style)
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+
+            // Update & Draw Active Game
+            if (GameManager.mode !== 'MENU' && GameManager.mode !== 'GAMEOVER') {
+                if (FlappyGame.active) {
+                    FlappyGame.update();
+                    FlappyGame.draw();
+                } else if (SnakeGame.active) {
+                    SnakeGame.update();
+                    SnakeGame.draw();
+                } else if (TetrisGame.active) {
+                    TetrisGame.update();
+                    TetrisGame.draw();
+                }
             }
 
             requestAnimationFrame(loop);
         }
+        loop();
 
-        // --- Control Logic ---
+        // --- INPUT HANDLING ---
+        function handleInput(key) {
+            if (GameManager.mode === 'MENU' || GameManager.mode === 'GAMEOVER') return;
 
-        function resetGame() {
-            bird.y = 150;
-            bird.velocity = 0;
-            pipes.reset();
-            score = 0;
-            frames = 0;
-            gameSpeed = 2.5;
-            uiScore.innerText = '0';
-            gameState = 'START';
-            
-            // Reset UI visibility
-            msgStart.style.display = 'block';
-            
-            // FIX: Correctly hide the Game Over screen
-            msgOver.style.display = 'none'; 
-            msgOver.classList.add('hidden');
-            
-            // Prevent immediate jump processing
-            ignoreInputTimestamp = Date.now() + 200;
-
-            // Initial render
-            bird.draw();
-        }
-
-        function startGame() {
-            if (Date.now() < ignoreInputTimestamp) return;
-            
-            gameState = 'PLAYING';
-            msgStart.style.display = 'none';
-            msgOver.style.display = 'none'; // Safety check
-            msgOver.classList.add('hidden');
-            configPanel.classList.add('hidden');
-            bird.jump();
-        }
-
-        function gameOver() {
-            gameState = 'GAMEOVER';
-            playSound('hit');
-            
-            // Cooldown to prevent accidental restart spamming
-            ignoreInputTimestamp = Date.now() + 500;
-
-            if (score > highScore) {
-                highScore = score;
-                localStorage.setItem('flappy_highscore', highScore);
+            if (FlappyGame.active) {
+                // Flappy debounce handled inside jump() now
+                if (key === 'jump') FlappyGame.jump();
             }
-            
-            uiHighScore.innerText = highScore;
-            finalScore.innerText = score;
-            finalBest.innerText = highScore;
-            
-            msgOver.classList.remove('hidden');
-            msgOver.style.display = 'block';
-        }
-
-        function handleInput(e) {
-            // If clicking buttons or inputs, don't trigger game
-            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
-            
-            // Global input debounce
-            if (Date.now() < ignoreInputTimestamp) return;
-
-            if (gameState === 'START') {
-                // Only start if URL is set or config is hidden
-                if (targetUrl || configPanel.classList.contains('hidden')) {
-                     startGame();
-                }
-            } else if (gameState === 'PLAYING') {
-                bird.jump();
-            } else if (gameState === 'GAMEOVER') {
-                // Allow tapping anywhere to restart (optional quality of life)
-                resetGame();
+            else if (SnakeGame.active) {
+                if (key === 'ArrowUp' || key === 'w') SnakeGame.input(0, -1);
+                if (key === 'ArrowDown' || key === 's') SnakeGame.input(0, 1);
+                if (key === 'ArrowLeft' || key === 'a') SnakeGame.input(-1, 0);
+                if (key === 'ArrowRight' || key === 'd') SnakeGame.input(1, 0);
+            }
+            else if (TetrisGame.active) {
+                if (key === 'ArrowLeft' || key === 'a') TetrisGame.move(-1);
+                if (key === 'ArrowRight' || key === 'd') TetrisGame.move(1);
+                if (key === 'ArrowDown' || key === 's') TetrisGame.drop(); // Soft Drop
+                if (key === 'ArrowUp' || key === 'w') TetrisGame.playerRotate(1); // Rotate ONLY
+                if (key === 'jump') TetrisGame.hardDrop(); // Space is Hard Drop
             }
         }
 
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') {
-                e.preventDefault(); 
-                if (gameState === 'GAMEOVER') {
-                    if (Date.now() > ignoreInputTimestamp) resetGame();
-                }
-                else handleInput(e);
-            }
+        // Keyboard
+        window.addEventListener('keydown', e => {
+            if (e.target.tagName === 'BUTTON') return; 
+            if (e.repeat) return; // Block holding key down spamming (essential for flappy)
+            
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
+            
+            if (e.code === 'Space') handleInput('jump');
+            else handleInput(e.key);
         });
+
+        // Touch / Mouse
         window.addEventListener('touchstart', (e) => {
-            handleInput(e);
+            if (e.target.tagName === 'BUTTON') return;
+            if (FlappyGame.active) handleInput('jump');
         }, {passive: false});
-        window.addEventListener('mousedown', handleInput);
-
-        restartBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent click from triggering jump immediately
-            resetGame();
-        });
-
-        // --- URL Configuration Logic ---
-
-        function initConfig() {
-            if (targetUrl) {
-                // If hardcoded, skip setup
-                startPingService();
-            } else {
-                // Show setup
-                configPanel.classList.remove('hidden');
-                msgStart.style.display = 'none';
-            }
-        }
-
-        saveConfigBtn.addEventListener('click', () => {
-            const val = urlInput.value.trim();
-            if (val) {
-                targetUrl = val.startsWith('http') ? val : `https://${val}`;
-                configPanel.classList.add('hidden');
-                msgStart.style.display = 'block';
-                startPingService();
-            }
-        });
-
-        // --- Pinger Service (Status Checker) ---
         
+        window.addEventListener('mousedown', (e) => {
+            if (e.target.tagName === 'BUTTON') return;
+            if (FlappyGame.active) handleInput('jump');
+        });
+
+        // D-Pad UI Bindings
+        // Tetris on Mobile: Up = Rotate. We need a drop button, but for now Up=Rotate is standard.
+        document.getElementById('btn-up').addEventListener('mousedown', (e) => { e.preventDefault(); handleInput('ArrowUp'); });
+        document.getElementById('btn-down').addEventListener('mousedown', (e) => { e.preventDefault(); handleInput('ArrowDown'); });
+        document.getElementById('btn-left').addEventListener('mousedown', (e) => { e.preventDefault(); handleInput('ArrowLeft'); });
+        document.getElementById('btn-right').addEventListener('mousedown', (e) => { e.preventDefault(); handleInput('ArrowRight'); });
+        
+        document.getElementById('btn-up').addEventListener('touchstart', (e) => { e.preventDefault(); handleInput('ArrowUp'); });
+        document.getElementById('btn-down').addEventListener('touchstart', (e) => { e.preventDefault(); handleInput('ArrowDown'); });
+        document.getElementById('btn-left').addEventListener('touchstart', (e) => { e.preventDefault(); handleInput('ArrowLeft'); });
+        document.getElementById('btn-right').addEventListener('touchstart', (e) => { e.preventDefault(); handleInput('ArrowRight'); });
+
+        // UI Buttons
+        document.getElementById('retry-btn').onclick = () => GameManager.retry();
+        document.getElementById('menu-btn').onclick = () => GameManager.toMenu();
+
+        // --- PINGER SERVICE ---
         const statusDot = document.getElementById('status-dot');
         const statusText = document.getElementById('status-text');
         const goBtn = document.getElementById('go-btn');
-
-        function startPingService() {
-            statusText.innerText = "Pinging server...";
-            
-            // Initial check
-            checkServer();
-            
-            // Poll every 5 seconds
-            setInterval(checkServer, 5000);
-        }
+        let isTargetReady = false;
 
         async function checkServer() {
             if (isTargetReady) return;
-
             try {
-                statusText.innerText = "Waking up Render...";
-                
-                // We use no-cors because we just want to know if it accepts connection.
-                // Render apps usually timeout if they are spinning up (or 503).
-                // Once they return ANY header (even opaque), they are technically 'up'.
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
-
-                await fetch(targetUrl, { 
-                    mode: 'no-cors',
-                    signal: controller.signal 
-                });
+                const id = setTimeout(() => controller.abort(), 4000);
+                await fetch(TARGET_URL, { mode: 'no-cors', signal: controller.signal });
+                clearTimeout(id);
                 
-                clearTimeout(timeoutId);
-                
-                // If we get here, the server responded (opaque or not)
-                serverIsUp();
-
-            } catch (error) {
-                // If it times out or fails network check, it's likely still booting or down
-                console.log("Ping failed, retrying...", error);
+                isTargetReady = true;
+                statusDot.classList.remove('bg-red-500', 'status-checking');
+                statusDot.classList.add('bg-green-500', 'status-online');
+                statusText.innerText = "READY";
+                statusText.classList.remove('text-gray-300');
+                statusText.classList.add('text-green-400', 'font-bold');
+                goBtn.classList.remove('hidden');
+                goBtn.onclick = () => window.location.href = TARGET_URL;
+            } catch (e) {
+                console.log("Ping...");
             }
         }
-
-        function serverIsUp() {
-            isTargetReady = true;
-            
-            // UI Updates
-            statusDot.classList.remove('bg-red-500', 'status-checking');
-            statusDot.classList.add('bg-green-500', 'status-online');
-            
-            statusText.innerText = "SERVER READY!";
-            statusText.classList.add('text-green-400', 'font-bold');
-            
-            goBtn.classList.remove('hidden');
-            goBtn.onclick = () => {
-                window.location.href = targetUrl;
-            };
-        }
-
-        // --- Init ---
-        uiHighScore.innerText = highScore;
-        initConfig();
-        loop();
+        setInterval(checkServer, 5000);
+        checkServer(); // init
 
     </script>
 </body>
