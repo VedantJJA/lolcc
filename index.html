@@ -47,24 +47,6 @@
             z-index: 40;
         }
 
-        .d-pad-btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            width: 60px;
-            height: 60px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            color: white;
-            user-select: none;
-            touch-action: manipulation;
-        }
-        .d-pad-btn:active {
-            background: rgba(255, 255, 255, 0.4);
-        }
-
         /* Status Indicator Pulse */
         @keyframes pulse-green {
             0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
@@ -100,6 +82,13 @@
                 linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
                 linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px);
         }
+
+        .blink {
+            animation: blinker 1s linear infinite;
+        }
+        @keyframes blinker {
+            50% { opacity: 0; }
+        }
     </style>
 </head>
 <body>
@@ -117,13 +106,13 @@
                 <div class="text-xs text-gray-400 mt-1">HIGH: <span id="highscore-display">0</span></div>
             </div>
 
-            <!-- Status Panel (Fixed Width & Layout) -->
+            <!-- Status Panel -->
             <div class="bg-gray-900 border-2 border-white p-2 rounded shadow-lg interactive bg-opacity-90 w-48 flex flex-col">
                 <div class="flex justify-between items-center mb-1">
                     <span class="text-[10px] text-gray-400 uppercase tracking-widest">SERVER</span>
                     <div id="status-dot" class="w-2 h-2 rounded-full bg-red-500 status-checking"></div>
                 </div>
-                <div id="status-text" class="text-[10px] leading-tight text-right font-mono text-gray-300 mb-1">Checking...</div>
+                <div id="status-text" class="text-[10px] leading-tight text-right font-mono text-gray-300 mb-1">Pinging...</div>
                 
                 <button id="go-btn" class="hidden w-full bg-green-600 hover:bg-green-500 text-white py-2 text-[10px] rounded border-b-2 border-green-800 active:border-0 transition-all font-bold">
                     ENTER SITE >>
@@ -138,16 +127,22 @@
             <div id="main-menu" class="bg-gray-900 border-4 border-white p-6 rounded-lg shadow-2xl max-w-md mx-auto">
                 <h1 class="text-2xl text-yellow-400 mb-6 retro-text">WAITING<br>ARCADE</h1>
                 <div class="space-y-3">
-                    <button onclick="GameManager.start('flappy')" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded border-b-4 border-blue-800 active:border-0 text-sm retro-text group">
+                    <button onclick="GameManager.selectMode('flappy')" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded border-b-4 border-blue-800 active:border-0 text-sm retro-text group">
                         FLAPPY BIRD
                     </button>
-                    <button onclick="GameManager.start('snake')" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded border-b-4 border-green-800 active:border-0 text-sm retro-text">
+                    <button onclick="GameManager.selectMode('snake')" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded border-b-4 border-green-800 active:border-0 text-sm retro-text">
                         SNAKE
                     </button>
-                    <button onclick="GameManager.start('tetris')" class="w-full bg-red-600 hover:bg-red-500 text-white py-4 rounded border-b-4 border-red-800 active:border-0 text-sm retro-text">
+                    <button onclick="GameManager.selectMode('tetris')" class="w-full bg-red-600 hover:bg-red-500 text-white py-4 rounded border-b-4 border-red-800 active:border-0 text-sm retro-text">
                         TETRIS
                     </button>
                 </div>
+            </div>
+
+            <!-- READY MESSAGE -->
+            <div id="ready-msg" class="hidden pointer-events-none">
+                <h2 class="text-2xl text-white retro-text blink bg-black bg-opacity-50 p-2 rounded">TAP TO START</h2>
+                <p class="text-[10px] text-gray-300 mt-2" id="controls-hint">SWIPE TO MOVE</p>
             </div>
 
             <!-- GAME OVER -->
@@ -158,18 +153,6 @@
                     <button id="menu-btn" class="bg-gray-600 text-white px-4 py-3 rounded border-b-4 border-gray-800 active:border-0 text-xs">MENU</button>
                     <button id="retry-btn" class="bg-white text-black px-6 py-3 rounded border-b-4 border-gray-400 active:border-0 text-xs font-bold">RETRY</button>
                 </div>
-            </div>
-        </div>
-
-        <!-- VIRTUAL CONTROLS (Only for Snake/Tetris) -->
-        <div id="mobile-controls" class="hidden interactive w-full flex-col items-center pb-4">
-            <div class="flex gap-2 mb-2">
-                <button class="d-pad-btn" id="btn-up">▲</button>
-            </div>
-            <div class="flex gap-8">
-                <button class="d-pad-btn" id="btn-left">◀</button>
-                <button class="d-pad-btn" id="btn-down">▼</button>
-                <button class="d-pad-btn" id="btn-right">▶</button>
             </div>
         </div>
     </div>
@@ -209,50 +192,57 @@
 
         // --- GAME MANAGER ---
         const GameManager = {
-            mode: 'MENU', // MENU, FLAPPY, SNAKE, TETRIS, GAMEOVER
+            mode: 'MENU', // MENU, READY, FLAPPY, SNAKE, TETRIS, GAMEOVER
+            selectedGame: null,
             score: 0,
             highScores: JSON.parse(localStorage.getItem('arcade_scores')) || { flappy: 0, snake: 0, tetris: 0 },
-            timestamp: 0,
-            inputBlock: 0, // Debounce timestamp
+            inputBlock: 0, 
 
-            start: function(gameMode) {
+            selectMode: function(gameMode) {
                 if (Date.now() < this.inputBlock) return;
                 
-                this.mode = gameMode.toUpperCase();
+                this.selectedGame = gameMode;
+                this.mode = 'READY';
                 this.score = 0;
                 
                 // UI Updates
                 document.getElementById('main-menu').classList.add('hidden');
                 document.getElementById('game-over-msg').classList.add('hidden');
+                document.getElementById('ready-msg').classList.remove('hidden');
                 document.getElementById('score-display').innerText = '0';
                 document.getElementById('highscore-display').innerText = this.highScores[gameMode];
                 
-                // Controls Visibility
-                const controls = document.getElementById('mobile-controls');
-                if (gameMode === 'flappy') controls.classList.add('hidden');
-                else controls.classList.remove('hidden');
-                controls.style.display = (gameMode === 'flappy') ? 'none' : 'flex';
+                // Hint Text
+                const hint = document.getElementById('controls-hint');
+                if (gameMode === 'flappy') hint.innerText = "TAP TO FLY";
+                if (gameMode === 'snake') hint.innerText = "SWIPE TO TURN";
+                if (gameMode === 'tetris') hint.innerText = "SWIPE MOVE • TAP ROTATE";
 
-                // Init specific game
-                if (gameMode === 'flappy') FlappyGame.init();
-                if (gameMode === 'snake') SnakeGame.init();
-                if (gameMode === 'tetris') TetrisGame.init();
+                // Pre-init visuals
+                if (gameMode === 'flappy') FlappyGame.init(true);
+                if (gameMode === 'snake') SnakeGame.init(true);
+                if (gameMode === 'tetris') TetrisGame.init(true);
 
-                // Add grid background for Tetris/Snake
                 if (gameMode !== 'flappy') document.body.classList.add('grid-bg');
                 else document.body.classList.remove('grid-bg');
             },
 
+            startGame: function() {
+                this.mode = this.selectedGame.toUpperCase();
+                document.getElementById('ready-msg').classList.add('hidden');
+                
+                // Activate Logic
+                if (this.selectedGame === 'flappy') FlappyGame.active = true;
+                if (this.selectedGame === 'snake') SnakeGame.active = true;
+                if (this.selectedGame === 'tetris') TetrisGame.active = true;
+            },
+
             over: function() {
-                this.inputBlock = Date.now() + 1000; // 1 second debounce
+                this.inputBlock = Date.now() + 1000; 
                 this.mode = 'GAMEOVER';
                 
                 // Save Highscore
-                let currentModeKey = 'flappy';
-                if (FlappyGame.active) currentModeKey = 'flappy';
-                else if (SnakeGame.active) currentModeKey = 'snake';
-                else if (TetrisGame.active) currentModeKey = 'tetris';
-
+                let currentModeKey = this.selectedGame;
                 if (this.score > this.highScores[currentModeKey]) {
                     this.highScores[currentModeKey] = this.score;
                     localStorage.setItem('arcade_scores', JSON.stringify(this.highScores));
@@ -260,7 +250,6 @@
 
                 document.getElementById('final-score').innerText = this.score;
                 document.getElementById('game-over-msg').classList.remove('hidden');
-                document.getElementById('mobile-controls').style.display = 'none';
                 playTone(150, 'sawtooth', 0.5);
             },
 
@@ -269,10 +258,9 @@
                 this.mode = 'MENU';
                 document.getElementById('game-over-msg').classList.add('hidden');
                 document.getElementById('main-menu').classList.remove('hidden');
-                document.getElementById('mobile-controls').style.display = 'none';
+                document.getElementById('ready-msg').classList.add('hidden');
                 document.body.classList.remove('grid-bg');
                 
-                // Stop all games
                 FlappyGame.active = false;
                 SnakeGame.active = false;
                 TetrisGame.active = false;
@@ -280,10 +268,7 @@
 
             retry: function() {
                 if (Date.now() < this.inputBlock) return;
-                let prevMode = 'flappy';
-                if (SnakeGame.active) prevMode = 'snake';
-                if (TetrisGame.active) prevMode = 'tetris';
-                this.start(prevMode);
+                this.selectMode(this.selectedGame);
             },
             
             addScore: function(points) {
@@ -298,10 +283,10 @@
             bird: { y: 0, v: 0 },
             pipes: [],
             frame: 0,
-            lastJumpTime: 0, // Cooldown timer
+            lastJumpTime: 0,
             
-            init: function() {
-                this.active = true;
+            init: function(preview = false) {
+                this.active = !preview;
                 SnakeGame.active = false; 
                 TetrisGame.active = false;
                 this.bird = { y: canvas.height/2, v: 0 };
@@ -313,12 +298,9 @@
             update: function() {
                 if (!this.active) return;
                 this.frame++;
-
-                // Physics
                 this.bird.v += 0.25;
                 this.bird.y += this.bird.v;
 
-                // Pipes
                 if (this.frame % 120 === 0) {
                     this.pipes.push({ x: canvas.width, gapY: Math.random() * (canvas.height - 300) + 50, passed: false });
                 }
@@ -327,11 +309,7 @@
                     let p = this.pipes[i];
                     p.x -= 3;
 
-                    // Collision
-                    if (
-                        (p.x < 80 && p.x + 60 > 50) && // X overlap (bird x is 50, w 30)
-                        (this.bird.y < p.gapY || this.bird.y + 30 > p.gapY + 180) // Y overlap (gap is 180)
-                    ) {
+                    if ((p.x < 80 && p.x + 60 > 50) && (this.bird.y < p.gapY || this.bird.y + 30 > p.gapY + 180)) {
                         GameManager.over();
                     }
 
@@ -342,19 +320,13 @@
                     }
                 }
 
-                // Bounds
                 if (this.bird.y > canvas.height || this.bird.y < -50) GameManager.over();
-
-                // Cleanup
                 this.pipes = this.pipes.filter(p => p.x > -100);
             },
 
             draw: function() {
-                // Bird
                 ctx.fillStyle = '#fbbf24';
                 ctx.fillRect(50, this.bird.y, 30, 30);
-                
-                // Pipes
                 ctx.fillStyle = '#22c55e';
                 this.pipes.forEach(p => {
                     ctx.fillRect(p.x, 0, 60, p.gapY);
@@ -363,10 +335,8 @@
             },
 
             jump: function() {
-                // Debounce / Delay logic
                 const now = Date.now();
-                if (now - this.lastJumpTime < 200) return; // 200ms cooldown
-                
+                if (now - this.lastJumpTime < 200) return; 
                 this.lastJumpTime = now;
                 this.bird.v = -6;
                 playTone(300, 'sine', 0.1);
@@ -381,13 +351,19 @@
             food: {},
             dir: { x: 0, y: 0 },
             nextDir: { x: 0, y: 0 },
-            speed: 10,
             frame: 0,
+            cols: 0,
+            rows: 0,
 
-            init: function() {
-                this.active = true;
+            init: function(preview = false) {
+                this.active = !preview;
                 FlappyGame.active = false;
                 TetrisGame.active = false;
+                
+                // Calculate playable grid bounds
+                this.cols = Math.floor((canvas.width - 20) / this.grid);
+                this.rows = Math.floor((canvas.height - 20) / this.grid);
+                
                 this.snake = [{x: 10, y: 10}, {x: 9, y: 10}, {x: 8, y: 10}];
                 this.dir = { x: 1, y: 0 };
                 this.nextDir = { x: 1, y: 0 };
@@ -395,11 +371,9 @@
             },
 
             spawnFood: function() {
-                const cols = Math.floor(canvas.width / this.grid);
-                const rows = Math.floor(canvas.height / this.grid);
                 this.food = {
-                    x: Math.floor(Math.random() * cols),
-                    y: Math.floor(Math.random() * rows)
+                    x: Math.floor(Math.random() * this.cols),
+                    y: Math.floor(Math.random() * this.rows)
                 };
             },
 
@@ -409,17 +383,15 @@
                 if (this.frame % 6 !== 0) return;
 
                 this.dir = {...this.nextDir};
-
                 const head = { x: this.snake[0].x + this.dir.x, y: this.snake[0].y + this.dir.y };
 
-                const cols = Math.floor(canvas.width / this.grid);
-                const rows = Math.floor(canvas.height / this.grid);
-                
-                if (head.x < 0 || head.x >= cols || head.y < 0 || head.y >= rows) {
+                // Border Collision
+                if (head.x < 0 || head.x >= this.cols || head.y < 0 || head.y >= this.rows) {
                     GameManager.over();
                     return;
                 }
 
+                // Self Collision
                 for (let part of this.snake) {
                     if (head.x === part.x && head.y === part.y) {
                         GameManager.over();
@@ -428,7 +400,6 @@
                 }
 
                 this.snake.unshift(head);
-
                 if (head.x === this.food.x && head.y === this.food.y) {
                     GameManager.addScore(10);
                     playTone(600, 'square', 0.1);
@@ -439,6 +410,15 @@
             },
 
             draw: function() {
+                // Draw Boundary Border
+                ctx.strokeStyle = '#ef4444'; // Red Border
+                ctx.lineWidth = 2;
+                ctx.strokeRect(10, 10, this.cols * this.grid, this.rows * this.grid);
+
+                // Offset context to inside border
+                ctx.save();
+                ctx.translate(10, 10);
+
                 ctx.fillStyle = '#22c55e';
                 this.snake.forEach(p => {
                     ctx.fillRect(p.x * this.grid, p.y * this.grid, this.grid - 1, this.grid - 1);
@@ -446,6 +426,7 @@
 
                 ctx.fillStyle = '#ef4444';
                 ctx.fillRect(this.food.x * this.grid, this.food.y * this.grid, this.grid - 1, this.grid - 1);
+                ctx.restore();
             },
 
             input: function(x, y) {
@@ -463,69 +444,34 @@
             rows: 20,
             board: [],
             piece: null,
-            nextPiece: null, // Store next piece
+            nextPiece: null, 
             offset: {x:0, y:0},
             dropCounter: 0,
             dropInterval: 1000,
             
-            // UPDATED: Shapes are now square matrices (NxN) for correct rotation
             shapes: [
-                [
-                    [0, 0, 0, 0],
-                    [1, 1, 1, 1],
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0]
-                ], // I (4x4)
-                [
-                    [1, 1],
-                    [1, 1]
-                ], // O (2x2)
-                [
-                    [0, 1, 0],
-                    [1, 1, 1],
-                    [0, 0, 0]
-                ], // T (3x3)
-                [
-                    [1, 0, 0],
-                    [1, 1, 1],
-                    [0, 0, 0]
-                ], // L (3x3)
-                [
-                    [0, 0, 1],
-                    [1, 1, 1],
-                    [0, 0, 0]
-                ], // J (3x3)
-                [
-                    [0, 1, 1],
-                    [1, 1, 0],
-                    [0, 0, 0]
-                ], // S (3x3)
-                [
-                    [1, 1, 0],
-                    [0, 1, 1],
-                    [0, 0, 0]
-                ]  // Z (3x3)
+                [[0, 0, 0, 0],[1, 1, 1, 1],[0, 0, 0, 0],[0, 0, 0, 0]], // I
+                [[1, 1],[1, 1]], // O
+                [[0, 1, 0],[1, 1, 1],[0, 0, 0]], // T
+                [[1, 0, 0],[1, 1, 1],[0, 0, 0]], // L
+                [[0, 0, 1],[1, 1, 1],[0, 0, 0]], // J
+                [[0, 1, 1],[1, 1, 0],[0, 0, 0]], // S
+                [[1, 1, 0],[0, 1, 1],[0, 0, 0]]  // Z
             ],
             colors: ['#00f0f0', '#f0f000', '#a000f0', '#f0a000', '#0000f0', '#00f000', '#f00000'],
 
             createPiece: function() {
                 const typeId = Math.floor(Math.random() * this.shapes.length);
-                const shape = this.shapes[typeId];
-                
-                // FIX: Create a DEEP COPY of the matrix. 
-                // Previously, we passed the reference, so rotating changed the original shape array.
-                const matrix = shape.map(row => [...row]);
-                
+                const matrix = this.shapes[typeId].map(row => [...row]);
                 return {
                     matrix: matrix,
-                    // Center the piece based on its specific width
                     pos: {x: (this.cols / 2 | 0) - Math.ceil(matrix[0].length / 2), y: 0},
                     color: this.colors[typeId]
                 };
             },
 
-            init: function() {
-                this.active = true;
+            init: function(preview = false) {
+                this.active = !preview;
                 FlappyGame.active = false;
                 SnakeGame.active = false;
                 
@@ -533,15 +479,15 @@
                 this.offset.y = (canvas.height - (this.rows * this.grid)) / 2;
                 
                 this.board = Array(this.rows).fill().map(() => Array(this.cols).fill(0));
-                this.nextPiece = this.createPiece(); // Init next
+                this.nextPiece = this.createPiece(); 
                 this.resetPiece();
                 this.dropCounter = 0;
             },
 
             resetPiece: function() {
-                this.piece = this.nextPiece; // Use next
-                this.nextPiece = this.createPiece(); // Generate new next
-                this.piece.pos = {x: (this.cols / 2 | 0) - 1, y: 0}; // Reset pos
+                this.piece = this.nextPiece;
+                this.nextPiece = this.createPiece();
+                this.piece.pos = {x: (this.cols / 2 | 0) - 1, y: 0};
                 
                 if (this.collide(this.board, this.piece)) {
                     GameManager.over();
@@ -553,8 +499,7 @@
                 const o = piece.pos;
                 for (let y = 0; y < m.length; ++y) {
                     for (let x = 0; x < m[y].length; ++x) {
-                        if (m[y][x] !== 0 &&
-                           (board[y + o.y] && board[y + o.y][x + o.x]) !== 0) {
+                        if (m[y][x] !== 0 && (board[y + o.y] && board[y + o.y][x + o.x]) !== 0) {
                             return true;
                         }
                     }
@@ -581,7 +526,7 @@
                 matrix.forEach(row => row.reverse());
             },
 
-            playerRotate: function(dir) {
+            playerRotate: function() {
                 const pos = this.piece.pos.x;
                 let offset = 1;
                 this.rotate(this.piece.matrix);
@@ -618,16 +563,13 @@
             },
 
             draw: function() {
-                // Draw Board Border
                 ctx.strokeStyle = '#fff';
                 ctx.lineWidth = 2;
                 ctx.strokeRect(this.offset.x - 2, this.offset.y - 2, (this.cols * this.grid) + 4, (this.rows * this.grid) + 4);
                 
-                // Board BG
                 ctx.fillStyle = '#111';
                 ctx.fillRect(this.offset.x, this.offset.y, this.cols * this.grid, this.rows * this.grid);
 
-                // Draw Board Blocks
                 this.board.forEach((row, y) => {
                     row.forEach((value, x) => {
                         if (value !== 0) {
@@ -637,7 +579,6 @@
                     });
                 });
 
-                // Draw Active Piece
                 if (this.piece) {
                     this.piece.matrix.forEach((row, y) => {
                         row.forEach((value, x) => {
@@ -651,22 +592,17 @@
                     });
                 }
 
-                // --- DRAW NEXT PIECE PREVIEW ---
+                // Next Piece
                 const previewX = this.offset.x + (this.cols * this.grid) + 20;
                 const previewY = this.offset.y;
-                
-                // Label
                 ctx.fillStyle = '#fff';
                 ctx.font = '10px "Press Start 2P"';
                 ctx.fillText("NEXT", previewX, previewY - 10);
-
-                // Box Border
                 ctx.strokeStyle = '#666';
                 ctx.strokeRect(previewX, previewY, 80, 80);
                 ctx.fillStyle = '#000';
                 ctx.fillRect(previewX, previewY, 80, 80);
 
-                // Draw the piece centered in box
                 if (this.nextPiece) {
                     const offsetX = previewX + 15;
                     const offsetY = previewY + 15;
@@ -699,112 +635,126 @@
                 } else {
                     this.dropCounter = 0;
                 }
-            },
-
-            hardDrop: function() {
-                while (!this.collide(this.board, this.piece)) {
-                    this.piece.pos.y++;
-                }
-                this.piece.pos.y--; // Step back up 1
-                this.merge(this.board, this.piece);
-                this.resetPiece();
-                this.arenaSweep();
-                this.dropCounter = 0;
-                playTone(100, 'square', 0.1);
             }
         };
 
         // --- MAIN LOOP ---
         function loop() {
-            // Clear
             ctx.fillStyle = '#0f0f0f';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Global Board Border (Retro style)
-            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-            ctx.lineWidth = 4;
-            ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+            // Global Border
+            if (GameManager.mode !== 'MENU') {
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(0, 0, canvas.width, canvas.height);
+            }
 
-            // Update & Draw Active Game
-            if (GameManager.mode !== 'MENU' && GameManager.mode !== 'GAMEOVER') {
-                if (FlappyGame.active) {
-                    FlappyGame.update();
-                    FlappyGame.draw();
-                } else if (SnakeGame.active) {
-                    SnakeGame.update();
-                    SnakeGame.draw();
-                } else if (TetrisGame.active) {
-                    TetrisGame.update();
-                    TetrisGame.draw();
-                }
+            // Draw Game
+            if (GameManager.mode === 'FLAPPY' || (GameManager.mode === 'READY' && GameManager.selectedGame === 'flappy')) {
+                FlappyGame.active ? FlappyGame.update() : null;
+                FlappyGame.draw();
+            } else if (GameManager.mode === 'SNAKE' || (GameManager.mode === 'READY' && GameManager.selectedGame === 'snake')) {
+                SnakeGame.active ? SnakeGame.update() : null;
+                SnakeGame.draw();
+            } else if (GameManager.mode === 'TETRIS' || (GameManager.mode === 'READY' && GameManager.selectedGame === 'tetris')) {
+                TetrisGame.active ? TetrisGame.update() : null;
+                TetrisGame.draw();
             }
 
             requestAnimationFrame(loop);
         }
         loop();
 
-        // --- INPUT HANDLING ---
-        function handleInput(key) {
-            if (GameManager.mode === 'MENU' || GameManager.mode === 'GAMEOVER') return;
+        // --- INPUT HANDLING (SWIPE + KEYBOARD) ---
+        
+        let touchStartX = 0;
+        let touchStartY = 0;
 
-            if (FlappyGame.active) {
-                // Flappy debounce handled inside jump() now
-                if (key === 'jump') FlappyGame.jump();
+        function handleTouchStart(e) {
+            if (e.target.tagName === 'BUTTON') return;
+            touchStartX = e.changedTouches[0].screenX;
+            touchStartY = e.changedTouches[0].screenY;
+            
+            if (GameManager.mode === 'READY') {
+                GameManager.startGame();
+                return;
             }
-            else if (SnakeGame.active) {
-                if (key === 'ArrowUp' || key === 'w') SnakeGame.input(0, -1);
-                if (key === 'ArrowDown' || key === 's') SnakeGame.input(0, 1);
-                if (key === 'ArrowLeft' || key === 'a') SnakeGame.input(-1, 0);
-                if (key === 'ArrowRight' || key === 'd') SnakeGame.input(1, 0);
+            if (GameManager.mode === 'FLAPPY') FlappyGame.jump();
+        }
+
+        function handleTouchEnd(e) {
+            if (GameManager.mode !== 'SNAKE' && GameManager.mode !== 'TETRIS') return;
+            if (e.target.tagName === 'BUTTON') return;
+
+            const touchEndX = e.changedTouches[0].screenX;
+            const touchEndY = e.changedTouches[0].screenY;
+            
+            const diffX = touchEndX - touchStartX;
+            const diffY = touchEndY - touchStartY;
+            
+            if (Math.abs(diffX) < 10 && Math.abs(diffY) < 10) {
+                // TAP DETECTED
+                if (GameManager.mode === 'TETRIS') TetrisGame.playerRotate();
+                return;
             }
-            else if (TetrisGame.active) {
-                if (key === 'ArrowLeft' || key === 'a') TetrisGame.move(-1);
-                if (key === 'ArrowRight' || key === 'd') TetrisGame.move(1);
-                if (key === 'ArrowDown' || key === 's') TetrisGame.drop(); // Soft Drop
-                if (key === 'ArrowUp' || key === 'w') TetrisGame.playerRotate(1); // Rotate ONLY
-                if (key === 'jump') TetrisGame.hardDrop(); // Space is Hard Drop
+
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                // Horizontal Swipe
+                if (diffX > 0) { // Right
+                    if (GameManager.mode === 'SNAKE') SnakeGame.input(1, 0);
+                    if (GameManager.mode === 'TETRIS') TetrisGame.move(1);
+                } else { // Left
+                    if (GameManager.mode === 'SNAKE') SnakeGame.input(-1, 0);
+                    if (GameManager.mode === 'TETRIS') TetrisGame.move(-1);
+                }
+            } else {
+                // Vertical Swipe
+                if (diffY > 0) { // Down
+                    if (GameManager.mode === 'SNAKE') SnakeGame.input(0, 1);
+                    if (GameManager.mode === 'TETRIS') TetrisGame.drop();
+                } else { // Up
+                    if (GameManager.mode === 'SNAKE') SnakeGame.input(0, -1);
+                }
             }
         }
 
-        // Keyboard
+        window.addEventListener('touchstart', handleTouchStart, {passive: false});
+        window.addEventListener('touchend', handleTouchEnd, {passive: false});
+
         window.addEventListener('keydown', e => {
-            if (e.target.tagName === 'BUTTON') return; 
-            if (e.repeat) return; // Block holding key down spamming (essential for flappy)
+            // PREVENT KEY HOLDING / SPAMMING
+            if (e.repeat) return;
+
+            if (GameManager.mode === 'READY') {
+                GameManager.startGame();
+                return;
+            }
             
             if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
             
-            if (e.code === 'Space') handleInput('jump');
-            else handleInput(e.key);
+            if (GameManager.mode === 'FLAPPY') {
+                 if (e.code === 'Space') FlappyGame.jump();
+            }
+            else if (GameManager.mode === 'SNAKE') {
+                if (e.key === 'ArrowUp') SnakeGame.input(0, -1);
+                if (e.key === 'ArrowDown') SnakeGame.input(0, 1);
+                if (e.key === 'ArrowLeft') SnakeGame.input(-1, 0);
+                if (e.key === 'ArrowRight') SnakeGame.input(1, 0);
+            }
+            else if (GameManager.mode === 'TETRIS') {
+                if (e.key === 'ArrowLeft') TetrisGame.move(-1);
+                if (e.key === 'ArrowRight') TetrisGame.move(1);
+                if (e.key === 'ArrowDown') TetrisGame.drop();
+                if (e.key === 'ArrowUp') TetrisGame.playerRotate();
+                if (e.code === 'Space') TetrisGame.drop(); // Hard drop removed for simplicity or mapped to space
+            }
         });
 
-        // Touch / Mouse
-        window.addEventListener('touchstart', (e) => {
-            if (e.target.tagName === 'BUTTON') return;
-            if (FlappyGame.active) handleInput('jump');
-        }, {passive: false});
-        
-        window.addEventListener('mousedown', (e) => {
-            if (e.target.tagName === 'BUTTON') return;
-            if (FlappyGame.active) handleInput('jump');
-        });
-
-        // D-Pad UI Bindings
-        // Tetris on Mobile: Up = Rotate. We need a drop button, but for now Up=Rotate is standard.
-        document.getElementById('btn-up').addEventListener('mousedown', (e) => { e.preventDefault(); handleInput('ArrowUp'); });
-        document.getElementById('btn-down').addEventListener('mousedown', (e) => { e.preventDefault(); handleInput('ArrowDown'); });
-        document.getElementById('btn-left').addEventListener('mousedown', (e) => { e.preventDefault(); handleInput('ArrowLeft'); });
-        document.getElementById('btn-right').addEventListener('mousedown', (e) => { e.preventDefault(); handleInput('ArrowRight'); });
-        
-        document.getElementById('btn-up').addEventListener('touchstart', (e) => { e.preventDefault(); handleInput('ArrowUp'); });
-        document.getElementById('btn-down').addEventListener('touchstart', (e) => { e.preventDefault(); handleInput('ArrowDown'); });
-        document.getElementById('btn-left').addEventListener('touchstart', (e) => { e.preventDefault(); handleInput('ArrowLeft'); });
-        document.getElementById('btn-right').addEventListener('touchstart', (e) => { e.preventDefault(); handleInput('ArrowRight'); });
-
-        // UI Buttons
         document.getElementById('retry-btn').onclick = () => GameManager.retry();
         document.getElementById('menu-btn').onclick = () => GameManager.toMenu();
 
-        // --- PINGER SERVICE ---
+        // --- PINGER SERVICE (FIXED) ---
         const statusDot = document.getElementById('status-dot');
         const statusText = document.getElementById('status-text');
         const goBtn = document.getElementById('go-btn');
@@ -812,26 +762,39 @@
 
         async function checkServer() {
             if (isTargetReady) return;
+            
             try {
                 const controller = new AbortController();
-                const id = setTimeout(() => controller.abort(), 4000);
-                await fetch(TARGET_URL, { mode: 'no-cors', signal: controller.signal });
+                // Increased timeout to 5s to allow Render time to respond if waking up
+                const id = setTimeout(() => controller.abort(), 5000);
+                
+                // Added Cache Busting timestamp to prevent cached failures
+                const bust = Date.now();
+                await fetch(`${TARGET_URL}?t=${bust}`, { 
+                    mode: 'no-cors', 
+                    signal: controller.signal 
+                });
+                
                 clearTimeout(id);
                 
+                // If we get here, fetch didn't throw (server is reachable)
                 isTargetReady = true;
                 statusDot.classList.remove('bg-red-500', 'status-checking');
                 statusDot.classList.add('bg-green-500', 'status-online');
-                statusText.innerText = "READY";
+                statusText.innerText = "ONLINE";
                 statusText.classList.remove('text-gray-300');
                 statusText.classList.add('text-green-400', 'font-bold');
                 goBtn.classList.remove('hidden');
                 goBtn.onclick = () => window.location.href = TARGET_URL;
             } catch (e) {
-                console.log("Ping...");
+                // Fetch threw error or timed out -> Server likely still down/booting
+                console.log("Ping failed (expected if booting)...");
             }
         }
+        
+        // Check every 5 seconds
         setInterval(checkServer, 5000);
-        checkServer(); // init
+        checkServer(); 
 
     </script>
 </body>
