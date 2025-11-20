@@ -89,6 +89,20 @@
         @keyframes blinker {
             50% { opacity: 0; }
         }
+        
+        /* Leaderboard Table */
+        .score-table td {
+            padding: 4px 8px;
+        }
+        .score-table tr:first-child {
+            color: #fbbf24; /* Gold for 1st */
+        }
+        .score-table tr:nth-child(2) {
+            color: #e5e7eb; /* Silver */
+        }
+        .score-table tr:nth-child(3) {
+            color: #b45309; /* Bronze */
+        }
     </style>
 </head>
 <body>
@@ -127,14 +141,17 @@
             <div id="main-menu" class="bg-gray-900 border-4 border-white p-6 rounded-lg shadow-2xl max-w-md mx-auto">
                 <h1 class="text-2xl text-yellow-400 mb-6 retro-text">WAITING<br>ARCADE</h1>
                 <div class="space-y-3">
-                    <button onclick="GameManager.selectMode('flappy')" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded border-b-4 border-blue-800 active:border-0 text-sm retro-text group">
+                    <button onclick="GameManager.selectMode('flappy')" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded border-b-4 border-blue-800 active:border-0 text-sm retro-text group">
                         FLAPPY BIRD
                     </button>
-                    <button onclick="GameManager.selectMode('snake')" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded border-b-4 border-green-800 active:border-0 text-sm retro-text">
+                    <button onclick="GameManager.selectMode('snake')" class="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded border-b-4 border-green-800 active:border-0 text-sm retro-text">
                         SNAKE
                     </button>
-                    <button onclick="GameManager.selectMode('tetris')" class="w-full bg-red-600 hover:bg-red-500 text-white py-4 rounded border-b-4 border-red-800 active:border-0 text-sm retro-text">
+                    <button onclick="GameManager.selectMode('tetris')" class="w-full bg-red-600 hover:bg-red-500 text-white py-3 rounded border-b-4 border-red-800 active:border-0 text-sm retro-text">
                         TETRIS
+                    </button>
+                    <button onclick="GameManager.showLeaderboard()" class="w-full bg-gray-700 hover:bg-gray-600 text-white py-3 rounded border-b-4 border-gray-900 active:border-0 text-sm retro-text mt-4">
+                        LEADERBOARD
                     </button>
                 </div>
             </div>
@@ -146,14 +163,59 @@
             </div>
 
             <!-- GAME OVER -->
-            <div id="game-over-msg" class="hidden bg-black bg-opacity-90 p-6 rounded-xl border-2 border-red-500">
-                <h1 class="text-3xl font-bold text-red-500 mb-4 retro-text">GAME OVER</h1>
-                <div class="text-sm text-gray-400 mb-2">SCORE: <span id="final-score" class="text-white text-xl">0</span></div>
-                <div class="flex gap-4 justify-center mt-6">
+            <div id="game-over-msg" class="hidden bg-black bg-opacity-95 p-6 rounded-xl border-2 border-red-500 max-w-sm mx-auto">
+                <h1 class="text-3xl font-bold text-red-500 mb-2 retro-text">GAME OVER</h1>
+                <div class="text-sm text-gray-400 mb-4">SCORE: <span id="final-score" class="text-white text-xl">0</span></div>
+                
+                <!-- High Score Input Form -->
+                <div id="highscore-form" class="hidden mb-4">
+                    <p class="text-yellow-400 text-xs mb-2 blink">NEW TOP 3 RECORD!</p>
+                    <input type="text" id="player-initials" maxlength="3" placeholder="AAA" class="bg-gray-800 border-2 border-white text-white text-center text-xl p-2 w-24 uppercase font-mono rounded mb-2">
+                    <button id="save-score-btn" class="block w-full bg-green-600 text-white py-2 rounded text-xs">SAVE RECORD</button>
+                </div>
+
+                <!-- Mini Leaderboard Display -->
+                <div id="mini-leaderboard" class="hidden mb-4 bg-gray-900 p-2 rounded border border-gray-700">
+                    <div class="text-xs text-gray-500 mb-2 border-b border-gray-700 pb-1">TOP 3 PLAYERS</div>
+                    <table class="w-full text-xs font-mono text-left score-table">
+                        <tbody id="mini-lb-body"></tbody>
+                    </table>
+                </div>
+
+                <div id="go-buttons" class="flex gap-4 justify-center">
                     <button id="menu-btn" class="bg-gray-600 text-white px-4 py-3 rounded border-b-4 border-gray-800 active:border-0 text-xs">MENU</button>
                     <button id="retry-btn" class="bg-white text-black px-6 py-3 rounded border-b-4 border-gray-400 active:border-0 text-xs font-bold">RETRY</button>
                 </div>
             </div>
+
+            <!-- LEADERBOARD MODAL -->
+            <div id="leaderboard-modal" class="hidden bg-gray-900 border-4 border-white p-6 rounded-lg shadow-2xl max-w-md mx-auto w-full">
+                <h1 class="text-xl text-yellow-400 mb-4 retro-text">HALL OF FAME</h1>
+                
+                <div class="flex gap-2 mb-4 justify-center">
+                    <button onclick="Leaderboard.render('flappy')" class="px-2 py-1 text-[10px] bg-blue-900 border border-blue-500 rounded">FLAPPY</button>
+                    <button onclick="Leaderboard.render('snake')" class="px-2 py-1 text-[10px] bg-green-900 border border-green-500 rounded">SNAKE</button>
+                    <button onclick="Leaderboard.render('tetris')" class="px-2 py-1 text-[10px] bg-red-900 border border-red-500 rounded">TETRIS</button>
+                </div>
+
+                <div class="bg-black p-4 rounded border border-gray-700 mb-4 min-h-[150px]">
+                    <h3 id="lb-title" class="text-xs text-gray-400 mb-2 text-center uppercase">GAME</h3>
+                    <table class="w-full text-sm font-mono score-table">
+                        <thead>
+                            <tr class="text-gray-600 text-[10px]">
+                                <th class="text-left">#</th>
+                                <th class="text-left">NAME</th>
+                                <th class="text-right">SCORE</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lb-body">
+                            <!-- Filled by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <button onclick="GameManager.closeLeaderboard()" class="w-full bg-gray-600 text-white py-2 rounded text-xs">CLOSE</button>
+            </div>
+
         </div>
     </div>
 
@@ -190,12 +252,63 @@
             osc.stop(audioCtx.currentTime + duration);
         }
 
+        // --- LEADERBOARD SYSTEM ---
+        const Leaderboard = {
+            data: JSON.parse(localStorage.getItem('arcade_leaderboard_v1')) || {
+                flappy: [{name:'CPU', score:10}, {name:'CPU', score:5}, {name:'CPU', score:2}],
+                snake: [{name:'CPU', score:50}, {name:'CPU', score:30}, {name:'CPU', score:10}],
+                tetris: [{name:'CPU', score:2000}, {name:'CPU', score:1000}, {name:'CPU', score:500}]
+            },
+
+            isHighScore: function(game, score) {
+                const scores = this.data[game];
+                // Qualified if score >= 3rd place
+                return score >= scores[2].score;
+            },
+
+            addScore: function(game, name, score) {
+                const scores = this.data[game];
+                scores.push({name: name.toUpperCase(), score: score});
+                scores.sort((a, b) => b.score - a.score); // Descending
+                this.data[game] = scores.slice(0, 3); // Keep Top 3
+                localStorage.setItem('arcade_leaderboard_v1', JSON.stringify(this.data));
+            },
+
+            render: function(game) {
+                const body = document.getElementById('lb-body');
+                document.getElementById('lb-title').innerText = game.toUpperCase();
+                body.innerHTML = '';
+                this.data[game].forEach((entry, i) => {
+                    body.innerHTML += `
+                        <tr>
+                            <td>${i+1}</td>
+                            <td>${entry.name}</td>
+                            <td class="text-right">${entry.score}</td>
+                        </tr>
+                    `;
+                });
+            },
+
+            renderMini: function(game) {
+                const body = document.getElementById('mini-lb-body');
+                body.innerHTML = '';
+                this.data[game].forEach((entry, i) => {
+                    body.innerHTML += `
+                        <tr>
+                            <td>${i+1}.</td>
+                            <td>${entry.name}</td>
+                            <td class="text-right">${entry.score}</td>
+                        </tr>
+                    `;
+                });
+            }
+        };
+
         // --- GAME MANAGER ---
         const GameManager = {
-            mode: 'MENU', // MENU, READY, FLAPPY, SNAKE, TETRIS, GAMEOVER
+            mode: 'MENU', // MENU, READY, FLAPPY, SNAKE, TETRIS, GAMEOVER, LEADERBOARD
             selectedGame: null,
             score: 0,
-            highScores: JSON.parse(localStorage.getItem('arcade_scores')) || { flappy: 0, snake: 0, tetris: 0 },
             inputBlock: 0, 
 
             selectMode: function(gameMode) {
@@ -207,16 +320,20 @@
                 
                 // UI Updates
                 document.getElementById('main-menu').classList.add('hidden');
+                document.getElementById('leaderboard-modal').classList.add('hidden');
                 document.getElementById('game-over-msg').classList.add('hidden');
                 document.getElementById('ready-msg').classList.remove('hidden');
+                
+                // Load current high score for display
+                const currentHigh = Leaderboard.data[gameMode][0].score;
                 document.getElementById('score-display').innerText = '0';
-                document.getElementById('highscore-display').innerText = this.highScores[gameMode];
+                document.getElementById('highscore-display').innerText = currentHigh;
                 
                 // Hint Text
                 const hint = document.getElementById('controls-hint');
                 if (gameMode === 'flappy') hint.innerText = "TAP TO FLY";
                 if (gameMode === 'snake') hint.innerText = "SWIPE TO TURN";
-                if (gameMode === 'tetris') hint.innerText = "SWIPE MOVE • TAP ROTATE";
+                if (gameMode === 'tetris') hint.innerText = "SWIPE MOVE • TAP ROTATE • SPACE DROP";
 
                 // Pre-init visuals
                 if (gameMode === 'flappy') FlappyGame.init(true);
@@ -227,11 +344,23 @@
                 else document.body.classList.remove('grid-bg');
             },
 
+            showLeaderboard: function() {
+                this.mode = 'LEADERBOARD';
+                document.getElementById('main-menu').classList.add('hidden');
+                document.getElementById('leaderboard-modal').classList.remove('hidden');
+                Leaderboard.render('flappy'); // Default view
+            },
+
+            closeLeaderboard: function() {
+                this.mode = 'MENU';
+                document.getElementById('leaderboard-modal').classList.add('hidden');
+                document.getElementById('main-menu').classList.remove('hidden');
+            },
+
             startGame: function() {
                 this.mode = this.selectedGame.toUpperCase();
                 document.getElementById('ready-msg').classList.add('hidden');
                 
-                // Activate Logic
                 if (this.selectedGame === 'flappy') FlappyGame.active = true;
                 if (this.selectedGame === 'snake') SnakeGame.active = true;
                 if (this.selectedGame === 'tetris') TetrisGame.active = true;
@@ -240,17 +369,40 @@
             over: function() {
                 this.inputBlock = Date.now() + 1000; 
                 this.mode = 'GAMEOVER';
+                playTone(150, 'sawtooth', 0.5);
                 
-                // Save Highscore
-                let currentModeKey = this.selectedGame;
-                if (this.score > this.highScores[currentModeKey]) {
-                    this.highScores[currentModeKey] = this.score;
-                    localStorage.setItem('arcade_scores', JSON.stringify(this.highScores));
-                }
-
                 document.getElementById('final-score').innerText = this.score;
                 document.getElementById('game-over-msg').classList.remove('hidden');
-                playTone(150, 'sawtooth', 0.5);
+                
+                // Check Leaderboard Qualification
+                const isQualify = Leaderboard.isHighScore(this.selectedGame, this.score);
+                
+                if (isQualify && this.score > 0) {
+                    // Show Input Form, Hide Buttons
+                    document.getElementById('highscore-form').classList.remove('hidden');
+                    document.getElementById('go-buttons').classList.add('hidden');
+                    document.getElementById('mini-leaderboard').classList.add('hidden');
+                    
+                    // Auto focus input
+                    setTimeout(() => document.getElementById('player-initials').focus(), 100);
+                } else {
+                    // Show Buttons & Mini Board
+                    document.getElementById('highscore-form').classList.add('hidden');
+                    document.getElementById('go-buttons').classList.remove('hidden');
+                    document.getElementById('mini-leaderboard').classList.remove('hidden');
+                    Leaderboard.renderMini(this.selectedGame);
+                }
+            },
+
+            saveScore: function() {
+                const name = document.getElementById('player-initials').value || "UNK";
+                Leaderboard.addScore(this.selectedGame, name, this.score);
+                
+                // Update UI
+                document.getElementById('highscore-form').classList.add('hidden');
+                document.getElementById('go-buttons').classList.remove('hidden');
+                document.getElementById('mini-leaderboard').classList.remove('hidden');
+                Leaderboard.renderMini(this.selectedGame);
             },
 
             toMenu: function() {
@@ -542,6 +694,7 @@
             },
 
             arenaSweep: function() {
+                let lines = 0;
                 outer: for (let y = this.board.length - 1; y > 0; --y) {
                     for (let x = 0; x < this.board[y].length; ++x) {
                         if (this.board[y][x] === 0) continue outer;
@@ -549,8 +702,11 @@
                     const row = this.board.splice(y, 1)[0].fill(0);
                     this.board.unshift(row);
                     ++y;
-                    GameManager.addScore(100);
-                    playTone(400, 'sine', 0.2);
+                    lines++;
+                }
+                if (lines > 0) {
+                    GameManager.addScore(lines * 100 * lines); // Bonus for multiple lines
+                    playTone(400 + (lines * 100), 'sine', 0.2);
                 }
             },
 
@@ -635,6 +791,18 @@
                 } else {
                     this.dropCounter = 0;
                 }
+            },
+
+            hardDrop: function() {
+                while (!this.collide(this.board, this.piece)) {
+                    this.piece.pos.y++;
+                }
+                this.piece.pos.y--; // Step back up
+                this.merge(this.board, this.piece);
+                this.resetPiece();
+                this.arenaSweep();
+                this.dropCounter = 0;
+                playTone(100, 'square', 0.1); // Thud sound
             }
         };
 
@@ -644,7 +812,7 @@
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             // Global Border
-            if (GameManager.mode !== 'MENU') {
+            if (GameManager.mode !== 'MENU' && GameManager.mode !== 'LEADERBOARD') {
                 ctx.strokeStyle = 'rgba(255,255,255,0.1)';
                 ctx.lineWidth = 4;
                 ctx.strokeRect(0, 0, canvas.width, canvas.height);
@@ -672,7 +840,7 @@
         let touchStartY = 0;
 
         function handleTouchStart(e) {
-            if (e.target.tagName === 'BUTTON') return;
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
             touchStartX = e.changedTouches[0].screenX;
             touchStartY = e.changedTouches[0].screenY;
             
@@ -685,7 +853,7 @@
 
         function handleTouchEnd(e) {
             if (GameManager.mode !== 'SNAKE' && GameManager.mode !== 'TETRIS') return;
-            if (e.target.tagName === 'BUTTON') return;
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
 
             const touchEndX = e.changedTouches[0].screenX;
             const touchEndY = e.changedTouches[0].screenY;
@@ -725,6 +893,12 @@
         window.addEventListener('keydown', e => {
             // PREVENT KEY HOLDING / SPAMMING
             if (e.repeat) return;
+            
+            // Allow typing in input
+            if (e.target.tagName === 'INPUT') {
+                if (e.key === 'Enter') GameManager.saveScore();
+                return;
+            }
 
             if (GameManager.mode === 'READY') {
                 GameManager.startGame();
@@ -747,12 +921,13 @@
                 if (e.key === 'ArrowRight') TetrisGame.move(1);
                 if (e.key === 'ArrowDown') TetrisGame.drop();
                 if (e.key === 'ArrowUp') TetrisGame.playerRotate();
-                if (e.code === 'Space') TetrisGame.drop(); // Hard drop removed for simplicity or mapped to space
+                if (e.code === 'Space') TetrisGame.hardDrop();
             }
         });
 
         document.getElementById('retry-btn').onclick = () => GameManager.retry();
         document.getElementById('menu-btn').onclick = () => GameManager.toMenu();
+        document.getElementById('save-score-btn').onclick = () => GameManager.saveScore();
 
         // --- PINGER SERVICE (FIXED) ---
         const statusDot = document.getElementById('status-dot');
@@ -765,10 +940,9 @@
             
             try {
                 const controller = new AbortController();
-                // Increased timeout to 5s to allow Render time to respond if waking up
                 const id = setTimeout(() => controller.abort(), 5000);
                 
-                // Added Cache Busting timestamp to prevent cached failures
+                // Added Cache Busting
                 const bust = Date.now();
                 await fetch(`${TARGET_URL}?t=${bust}`, { 
                     mode: 'no-cors', 
@@ -777,7 +951,6 @@
                 
                 clearTimeout(id);
                 
-                // If we get here, fetch didn't throw (server is reachable)
                 isTargetReady = true;
                 statusDot.classList.remove('bg-red-500', 'status-checking');
                 statusDot.classList.add('bg-green-500', 'status-online');
@@ -787,12 +960,10 @@
                 goBtn.classList.remove('hidden');
                 goBtn.onclick = () => window.location.href = TARGET_URL;
             } catch (e) {
-                // Fetch threw error or timed out -> Server likely still down/booting
                 console.log("Ping failed (expected if booting)...");
             }
         }
         
-        // Check every 5 seconds
         setInterval(checkServer, 5000);
         checkServer(); 
 
